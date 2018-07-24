@@ -1,54 +1,71 @@
-﻿using System;
-using System.IO;
+﻿using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
-using System.Linq;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using System.Text;
+using System.IO;
+using System.Threading.Tasks;
 
 namespace AggregateGDPPopulation
 {
     public class Program
     {
-        public static void AggregateFunction()
+        public static async Task<string> ReadAsync(string filepath)
         {
-            string[] readdata = File.ReadAllLines(@"../../../../AggregateGDPPopulation/data/datafile.csv", Encoding.UTF8);
-            JObject readCCMap = JObject.Parse(File.ReadAllText(@"../../../../AggregateGDPPopulation/data/cc-mapping.json", Encoding.UTF8));
-            Dictionary<string, string> countryContinetMap = JsonConvert.DeserializeObject<Dictionary<string, string>>(readCCMap.ToString());
-            Dictionary<string, OutputObject> output = new Dictionary<string, OutputObject>();
-            //Console.WriteLine(IndexOfCountry);
-            string[] header = readdata[0].Replace('"', ' ').Trim().Split(',');
-            int CI = Array.IndexOf(header, "Country Name ");
-            int PI = Array.IndexOf(header, " Population (Millions) 2012 ");
-            int GDPI = Array.IndexOf(header, " GDP Billions (USD) 2012 ");
-            //Console.WriteLine(header[4]);
-            //Console.WriteLine(GDPI);
-            readdata = readdata.Skip(1).ToArray();
-
-            foreach (string x in readdata)
+            string data;
+            using (StreamReader srRead = new StreamReader(filepath))
             {
-                string[] rowreaddata = x.Replace('"', ' ').Split(',');
-                string Country = rowreaddata[CI];
-                string Population = rowreaddata[PI];
-                string GDP = rowreaddata[GDPI];
-                if (Country.Trim() != "European Union")
-                {
-                    if (!output.ContainsKey(countryContinetMap[Country.Trim()]))
-                    {
-                        output.Add(countryContinetMap[Country.Trim()], new OutputObject() { GDP_2012 = float.Parse(GDP), POPULATION_2012 = float.Parse(Population) });
-                    }
-                    else
-                    {
-                        output[countryContinetMap[Country.Trim()]].GDP_2012 += float.Parse(GDP);
-                        output[countryContinetMap[Country.Trim()]].POPULATION_2012 += float.Parse(Population);
-                    }
-                }
+                data = await srRead.ReadToEndAsync();
             }
-            var outputJsonString = JsonConvert.SerializeObject(output);
-            //Console.WriteLine(outputJsonString);
-            //JObject jsonObject = JObject.Parse(outputJsonString);
-            File.WriteAllText(@"../../../../AggregateGDPPopulation/output/output.json", outputJsonString);
-            //Console.ReadLine();
+            return data;
+        }
+        public static async void WriteAsync(string outputpath, string result)
+        {
+            using (StreamWriter srWrite = new StreamWriter(outputpath))
+            {
+                await srWrite.WriteAsync(result);
+            }
+        }
+        public static async Task Main()
+        {
+            string DataCsvPath = @"../../../../AggregateGDPPopulation/data/datafile.csv";
+            string MapPath = @"../../../../AggregateGDPPopulation/data/cc-mapping.json";
+            
+
+            Task<string> DataCsvtask = ReadAsync(DataCsvPath);
+            Task<string> Maptask = ReadAsync(MapPath);
+            string data = await DataCsvtask;
+            string CCMap = await Maptask;
+            
+            Dictionary<string, string> CountryContinentMap = JsonConvert.DeserializeObject<Dictionary<string, string>>(CCMap);   
+            string[] dataarray = data.Replace("\"", "").Split('\n');            
+            string[] header = dataarray[0].Split(',');
+            int CI = Array.IndexOf(header, "Country Name");
+            int PI = Array.IndexOf(header, "Population (Millions) 2012");
+            int GDPI = Array.IndexOf(header, "GDP Billions (USD) 2012");
+
+            Dictionary<string, OutputObject> OutputDict = new Dictionary<string, OutputObject>();
+            for (int i = 1; i < dataarray.Length; i++)
+            {
+                float GDP = float.Parse(dataarray[i].Split(',')[GDPI]);
+                float Population = float.Parse(dataarray[i].Split(',')[PI]);
+                string Country = dataarray[i].Split(',')[CI];
+                if (Country == "European Union")
+                {
+                    break;
+                }
+
+                if (!OutputDict.ContainsKey(CountryContinentMap[Country]))
+                {
+                    OutputDict.Add(CountryContinentMap[Country], new OutputObject() { GDP_2012 = GDP, POPULATION_2012 = Population });
+                }
+                else
+                {
+                    OutputDict[CountryContinentMap[Country]].GDP_2012 += GDP;
+                    OutputDict[CountryContinentMap[Country]].POPULATION_2012 += Population;
+                }
+           }
+            string OutputPath = @"../../../../AggregateGDPPopulation/output/output.json";
+            string output = JsonConvert.SerializeObject(OutputDict, Formatting.Indented);
+            WriteAsync(OutputPath, output);
         }
     }
 
